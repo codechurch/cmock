@@ -93,7 +93,7 @@
     设置当前测试用例的结果。
 
   - 宏 CMOCK_INFO(fmt, ...) 和 CMOCK_ERROR(fmt, ...)
-    打印信息，其中CMOCK_ERROR附带设置当前用例结果为1（错误）。
+    打印信息，其中CMOCK_ERROR附带设置当前用例结果为0（错误）。
 
   - 宏 CMOCK_CASE(name)
 	生成测试用例的函数头。
