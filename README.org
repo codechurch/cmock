@@ -1,7 +1,7 @@
 #+TITLE: CMOCK
 #+AUTHOR: ZX.Wang
 #+EMAIL: codechurch@hotmail.com
-#+OPTIONS: num:t /:nil 
+#+OPTIONS: num:t /:nil \n:t 
 #+LANGUAGE: zh
 
 * 简介
