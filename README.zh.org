@@ -123,8 +123,8 @@ CMOCK_CASE(other)
 
 int main()
 {
-  RUN_CASE(some);
-  RUN_CASE(other);
+  CMOCK_RUN_CASE(some);
+  CMOCK_RUN_CASE(other);
   return cmock_result();
 }
 #+end_src

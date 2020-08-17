@@ -5,7 +5,7 @@
 #+LANGUAGE: zh
 
 * Overview
-  - Other language: [[README.zh.org][中文]]
+  - Other languages: [[README.zh.org][中文]]
   - The cmock is a MOCK tool, which is just for C language.
   - The cmock can call/mock any glocal function (including static functions).
   - Now, cmock is just working on GNU/Linux of arch AMD64.
@@ -126,8 +126,8 @@ CMOCK_CASE(other)
 
 int main()
 {
-  RUN_CASE(some);
-  RUN_CASE(other);
+  CMOCK_RUN_CASE(some);
+  CMOCK_RUN_CASE(other);
   return cmock_result();
 }
 #+end_src
