@@ -110,8 +110,8 @@ Simple Unit Test Interface:
 
          int main()
          {
-           RUN_CASE(some);
-           RUN_CASE(other);
+           CMOCK_RUN_CASE(some);
+           CMOCK_RUN_CASE(other);
            return cmock_result();
          }
 
