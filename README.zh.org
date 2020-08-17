@@ -1,0 +1,131 @@
+#+TITLE: CMOCK
+#+AUTHOR: ZX.Wang
+#+EMAIL: codechurch@hotmail.com
+#+OPTIONS: num:t /:nil \n:t 
+#+LANGUAGE: zh
+
+* 简介
+  cmock是一款专门提供给C语言使用的MOCK工具。
+  相比于业内其他的MOCK，cmock的特殊之处在于，实现了MOCK和调用static函数的机制。
+  cmock现在可以工作在AMD64的GNU/Linux环境。运行cmock，需要在系统中安装perl、objdump和gcc(x86_64-linux)。如果你使用Debian，其中objdump在binutils包中提供。
+  cmock也额外实现了简单的单元测试函数。
+
+* 授权
+  授权协议采用 GPLv3 。
+
+* 安装
+  cmock是一个perl5程序。
+  将cmock复制到/usr/bin目录，再设置执行权限，即完成安装。
+#+begin_src sh :export code
+  sudo cp cmock /usr/bin && sudo chmod +x /usr/bin/cmock
+#+end_src
+
+* 用法
+#+begin_src dummy
+  cmock <Object File>
+#+end_src
+  cmock对用户提供的目标文件<base>.o进行分析，生成<base>_cmock.h、<base>_cmock.c及<base>_cmock.lds文件。 
+  在<base>_cmock.h提供了CMOCK宏，在<base>_cmock.c提供了cmock的函数实现，在<base>_cmock.lds提供了辅助的链接脚本。
+
+* 用例
+  在附带的例子里，some.c是待测的C程序文件，test.c是单元测试程序文件。
+  在test.c里，应该：
+#+begin_src dummy
+  #include "some_cmock.h"
+#+end_src
+
+  - 第一步，编译some.c：
+#+begin_src sh :export code
+  gcc -c -g -Wall -fPIC -o some.o some.c
+#+end_src
+  
+  - 第二步，使用cmock生成some_cmock.h、some_cmock.c和some_cmock.lds
+#+begin_src sh :export code
+  cmock some.o
+#+end_src
+
+  - 第三步，编译test.c和some_cmock.c
+#+begin_src sh :export code
+  gcc -c -g -Wall -fPIC -o test.o test.c 
+  gcc -c -g -Wall -fPIC -o some_cmock.o some_cmock.c
+#+end_src
+
+  - 第四步，链接所有，得到测试程序
+#+begin_src sh :export code
+  gcc -g -Wall -o test_some.out some.o some_cmock.o test.o \
+      -ldl -lm              \
+      -Wl,-T,some_cmock.lds \
+      -Wl,--unresolved-symbols=ignore-all 
+#+end_src
+  (--unresolved-symbols 是可选的，取决于在test.c里的实现。)
+
+* 编程接口
+  - 函数 void cmock_restore()
+	将当前MOCK的函数恢复为真实函数。
+
+  - 宏 CMOCK_CALL(rt, func, args)
+	调用真实函数，此宏可用于调用static函数。
+	例：
+#+begin_src C :export code
+  int v = CMOCK_CALL(int, foobar, (3));
+#+end_src
+
+  - 宏 CMOCK_FUNC_VAL(func, val)
+	MOCK函数，设置函数返回固定值。
+#+begin_src C :export code
+  CMOCK_FUNC_VAL(foobar, 10);
+#+end_src
+
+  - 宏 CMOCK_FUNC(rt, func)
+	MOCK函数，提供函数体。
+#+begin_src C :export code
+  CMOCK_FUNC(int, foobar) (int a)
+    {
+      return a * 2;
+    }
+#+end_src
+
+* 简单单元测试接口
+  - 环境变量 V 控制附加信息输出，
+#+begin_src sh :export code
+  V=1 ./test_some.out
+#+end_src
+    将输出附加信息。
+
+  - 函数 int cmock_result()
+    获取整个测试程序的结果。
+
+  - 宏 CMOCK_RESULT(expr)
+    设置当前测试用例的结果。
+
+  - 宏 CMOCK_INFO(fmt, ...) 和 CMOCK_ERROR(fmt, ...)
+    打印信息，其中CMOCK_ERROR附带设置当前用例结果为0（错误）。
+
+  - 宏 CMOCK_CASE(name)
+	生成测试用例的函数头。
+
+  - 宏 CMOCK_RUN_CASE(name)
+    运行一个测试用例。
+#+begin_src C :export code
+CMOCK_CASE(some)
+{
+  ...
+  CMOCK_RESULT(1);
+}
+
+CMOCK_CASE(other)
+{
+  if (foobar() == 0)
+    CMOCK_INFO("foobar return OK");
+  else               
+    CMOCK_ERROR("foobar return error");
+}
+
+int main()
+{
+  RUN_CASE(some);
+  RUN_CASE(other);
+  return cmock_result();
+}
+#+end_src
+

@@ -75,6 +75,9 @@ Programming Interface:
          /// Then, argument is '(int a)' and foobar's body was defined.
 
 Simple Unit Test Interface:
+    - Environment Variable V
+      To set verbose output.
+
     - cmock_result()
       To get the result of whole testing.
 

@@ -4,80 +4,81 @@
 #+OPTIONS: num:t /:nil \n:t 
 #+LANGUAGE: zh
 
-* 简介
-  cmock是一款专门提供给C语言使用的MOCK工具。
-  相比于业内其他的MOCK，cmock的特殊之处在于，实现了MOCK和调用static函数的机制。
-  cmock现在可以工作在AMD64的GNU/Linux环境。运行cmock，需要在系统中安装perl、objdump和gcc(x86_64-linux)。如果你使用Debian，其中objdump在binutils包中提供。
-  cmock也额外实现了简单的单元测试函数。
+* Overview
+  Other language: [[README.zh.org][中文]]
+  The cmock is a MOCK tool, which is just for C language.
+  The cmock can call/mock any glocal function (including static functions).
+  Now, cmock is just working on GNU/Linux of arch AMD64.
+  It needs objdump installed which is provided in binutils of Debian's packages.
 
-* 授权
-  授权协议采用 GPLv3 。
+* License
+  GPLv3
 
-* 安装
-  cmock是一个perl5程序。
-  将cmock复制到/usr/bin目录，再设置执行权限，即完成安装。
+* Installation
+  The cmock is perl5 prog.
+  To copy cmock to /usr/bin and change mode。
 #+begin_src sh :export code
   sudo cp cmock /usr/bin && sudo chmod +x /usr/bin/cmock
 #+end_src
 
-* 用法
+* Usage
 #+begin_src dummy
   cmock <Object File>
 #+end_src
-  cmock对用户提供的目标文件<base>.o进行分析，生成<base>_cmock.h、<base>_cmock.c及<base>_cmock.lds文件。 
-  在<base>_cmock.h提供了CMOCK宏，在<base>_cmock.c提供了cmock的函数实现，在<base>_cmock.lds提供了辅助的链接脚本。
+  The cmock analysises <base>.o and makes out <base>_cmock.h, <base>_cmock.c and <base>_cmock.lds . 
+  The file <base>_cmock.h supports CMOCK macros. The file <base>_cmock.c supports cmock functions body. The file <base>_cmock.lds supports ld-script for linker.
 
-* 用例
-  在附带的例子里，some.c是待测的C程序文件，test.c是单元测试程序文件。
-  在test.c里，应该：
+* Example
+  In the example, some.c is the subject file and test.c is unit testing code.
+  in test.c, you should: 
 #+begin_src dummy
   #include "some_cmock.h"
 #+end_src
 
-  - 第一步，编译some.c：
+  - Phase 1, to compile some.c:
 #+begin_src sh :export code
   gcc -c -g -Wall -fPIC -o some.o some.c
 #+end_src
   
-  - 第二步，使用cmock生成some_cmock.h、some_cmock.c和some_cmock.lds
+  - Phase 2, using cmock to generate some_cmock.h, some_cmock.c and some_cmock.lds .
 #+begin_src sh :export code
   cmock some.o
 #+end_src
 
-  - 第三步，编译test.c和some_cmock.c
+  - Phase 3, to compile test.c and some_cmock.c
 #+begin_src sh :export code
   gcc -c -g -Wall -fPIC -o test.o test.c 
   gcc -c -g -Wall -fPIC -o some_cmock.o some_cmock.c
 #+end_src
 
-  - 第四步，链接所有，得到测试程序
+  - Phase 4, to link all and make out program 
 #+begin_src sh :export code
   gcc -g -Wall -o test_some.out some.o some_cmock.o test.o \
       -ldl -lm              \
       -Wl,-T,some_cmock.lds \
       -Wl,--unresolved-symbols=ignore-all 
 #+end_src
-  (--unresolved-symbols 是可选的，取决于在test.c里的实现。)
+  (--unresolved-symbols is optional)
 
-* 编程接口
-  - 函数 void cmock_restore()
-	将当前MOCK的函数恢复为真实函数。
+* Programming Interface
+  - function void cmock_restore()
+	To restore relocation to real functions. 
 
-  - 宏 CMOCK_CALL(rt, func, args)
-	调用真实函数，此宏可用于调用static函数。
-	例：
+  - macro CMOCK_CALL(rt, func, args)
+	To call the real func, return type is rt, argments is args.
+	Example:
 #+begin_src C :export code
   int v = CMOCK_CALL(int, foobar, (3));
 #+end_src
 
-  - 宏 CMOCK_FUNC_VAL(func, val)
-	MOCK函数，设置函数返回固定值。
+  - macro CMOCK_FUNC_VAL(func, val)
+    To mock func, set return value is val.
 #+begin_src C :export code
   CMOCK_FUNC_VAL(foobar, 10);
 #+end_src
 
-  - 宏 CMOCK_FUNC(rt, func)
-	MOCK函数，提供函数体。
+  - macro CMOCK_FUNC(rt, func)
+	To mock func, return type is rt, set args and body.
 #+begin_src C :export code
   CMOCK_FUNC(int, foobar) (int a)
     {
@@ -85,27 +86,29 @@
     }
 #+end_src
 
-* 简单单元测试接口
-  - 环境变量 V 控制附加信息输出，
+* Simple Unit Test Interface
+  - Environment Variable V
+    To set verbose output
 #+begin_src sh :export code
   V=1 ./test_some.out
 #+end_src
-    将输出附加信息。
 
-  - 函数 int cmock_result()
-    获取整个测试程序的结果。
+  - function int cmock_result()
+    To get the result of whole testing.
 
-  - 宏 CMOCK_RESULT(expr)
-    设置当前测试用例的结果。
+  - macro CMOCK_RESULT(expr)
+    To set the result of this case. 
+    
+  - macro CMOCK_INFO(fmt, ...) and CMOCK_ERROR(fmt, ...)
+    To print text.
+    The CMOCK_ERROR also sets error result.
 
-  - 宏 CMOCK_INFO(fmt, ...) 和 CMOCK_ERROR(fmt, ...)
-    打印信息，其中CMOCK_ERROR附带设置当前用例结果为0（错误）。
+  - macro CMOCK_CASE(name)
+	To provide a head of test-case function.
 
-  - 宏 CMOCK_CASE(name)
-	生成测试用例的函数头。
-
-  - 宏 CMOCK_RUN_CASE(name)
-    运行一个测试用例。
+  - macro CMOCK_RUN_CASE(name)
+    To run a test case. You should run test cases in main.
+	Example:
 #+begin_src C :export code
 CMOCK_CASE(some)
 {
