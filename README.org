@@ -5,11 +5,11 @@
 #+LANGUAGE: zh
 
 * Overview
-  Other language: [[README.zh.org][中文]]
-  The cmock is a MOCK tool, which is just for C language.
-  The cmock can call/mock any glocal function (including static functions).
-  Now, cmock is just working on GNU/Linux of arch AMD64.
-  It needs objdump installed which is provided in binutils of Debian's packages.
+  - Other language: [[README.zh.org][中文]]
+  - The cmock is a MOCK tool, which is just for C language.
+  - The cmock can call/mock any glocal function (including static functions).
+  - Now, cmock is just working on GNU/Linux of arch AMD64.
+  - It needs objdump installed which is provided in binutils of Debian's packages.
 
 * License
   GPLv3
