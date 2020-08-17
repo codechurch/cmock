@@ -1,0 +1,585 @@
+#!/usr/bin/perl
+
+use strict;
+
+sub print_help {
+    print <<'EOF'
+    Project: cmock
+    Version: 1.0.1
+    Author:  ZX Wang
+    Email:   codechurch@hotmail.com
+    License: GPLv3
+
+    The cmock is a mock tool, which is just for C language.
+    Now, cmock is just working on GNU/Linux of arch AMD64.
+    It needs objdump installed which is provided in binutils of Debian's packages.
+        
+Usage:
+       cmock <Object File>
+            Generating files of <base>_cmock.h <base>_cmock.c <base>_cmock.lds .
+
+       cmock [-h | --help]
+            Show this page.
+
+       cmock -f <Exec File> <Shared Object>
+            Generating a Shared Object for undefined symbol of the exec-file.
+
+Example:
+       some.c : C source to test.
+       test.c : testing source file.
+	  	 In test.c, You should:
+           #include "some_cmock.h"
+       
+       (1) Compile some.c: 
+           gcc -c -g -Wall -fPIC -o some.o some.c
+
+       (2) Use cmock to generate some_cmock.h, some_cmock.c and some_cmock.lds
+           cmock some.o
+
+       (3) Compile test.c and some_cmock.c
+           gcc -c -g -Wall -fPIC -o test.o test.c
+		   gcc -c -g -Wall -fPIC -o some_cmock.o some_cmock.c
+
+       (4) Link all and get out file
+           gcc -g -Wall -o test_some.out some.o some_cmock.o test.o \
+               -ldl -lm              \
+               -Wl,-T,some_cmock.lds \
+               -Wl,--unresolved-symbols=ignore-all 
+
+           In the step (4), You could add libraries which you want, 
+              and add option '--unresolved-symbols' optionally.
+
+Programming Interface:
+    - void cmock_restore()
+      To restore relocation to real functions. 
+
+    - CMOCK_CALL(rt, func, args)
+      To call the real func, return type is rt, argments is args.
+      Example:   
+         int v = CMOCK_CALL(int, foobar, (3));
+         /// Then, call foobar with args (3) and return type is int.
+
+    - CMOCK_FUNC_VAL(func, val)
+      To mock func, set return value is val.
+      Example:   
+         CMOCK_FUNC_VAL(foobar, 10);
+         /// Then, foobar will return 10. 
+      
+    - CMOCK_FUNC(rt, func)
+      To mock func, return type is rt, set args and body.
+      Example:   
+         CMOCK_FUNC(int, foobar) (int a)
+         {
+            return a * 2;
+         }
+         /// Then, argument is '(int a)' and foobar's body was defined.
+
+Simple Unit Test Interface:
+    - cmock_result()
+      To get the result of whole testing.
+
+    - CMOCK_RESULT(expr)
+      To set the result of this case. 
+
+    - CMOCK_INFO(fmt, ...) and CMOCK_ERROR(fmt, ...)
+      To print text.
+      The CMOCK_ERROR also sets error result.
+
+    - CMOCK_CASE(name)
+      To provide a head of test-case function.
+
+    - CMOCK_RUN_CASE(name)
+      To run a test case. You should run test cases in main.
+      Example:
+         CMOCK_CASE(some)
+         {
+            ...
+            CMOCK_RESULT(1);
+         }
+
+         CMOCK_CASE(other)
+         {
+            if (foobar() == 0)
+              CMOCK_INFO("foobar return OK");
+            else               
+              CMOCK_ERROR("foobar return error");
+         }
+
+         int main()
+         {
+           RUN_CASE(some);
+           RUN_CASE(other);
+           return cmock_result();
+         }
+
+EOF
+}
+
+sub full_unresolved_symbols ($$) {
+	my ($exec_file, $so_file) = @_;
+	open my $unf, "ldd -r ${exec_file} 2>&1 |";
+	my %symbols = ();
+	my $cc = 0;
+	while (<$unf>) {
+		chomp;
+		if (/undefined symbol:\s*([_0-9a-zA-Z]+)/) {
+			@symbols{ $1 } = 1;
+			$cc = 1;
+		}
+	}
+	close $unf;
+	if ( $cc == 0 ) {
+		exit 1
+	}
+	
+    my $src_file = "/tmp/cmock-tmp-$$.c";
+	open my $src, ">", $src_file;
+	print $src "#include <stdio.h>\n";
+	
+	for my $it ( keys %symbols ) {
+		print "cmock: unresolved symbol '$it'", "\n";
+		print $src <<"ENDSS";
+
+int $it()
+{
+    fprintf(stderr, "cmock: unresolved symbol '$it'\\n");
+    return -1;
+}
+ENDSS
+	}
+	print $src "\n";
+	close $src;
+	system("gcc -shared -fPIC -o $so_file ${src_file}");
+	unlink $src_file;
+	exit 0
+}
+
+if ( (scalar @ARGV) == 0 || $ARGV[0] =~ /^(-h)|(--help)$/ ) {
+    print_help;
+    exit 0
+}
+
+if ( $ARGV[0] eq '-f' ) {
+	if ( (scalar @ARGV) != 3) {
+		print_help;
+		exit 1
+	}
+	full_unresolved_symbols $ARGV[1], $ARGV[2];
+}
+
+our $dest_file = $ARGV[0];
+-f $dest_file or die "$dest_file Not Found";
+system("which objdump &>/dev/null");
+$? == 0 or die "No objdump";
+
+our $dest = $dest_file;
+$dest = $2 if $dest_file =~ m{^(.*/)?([^/]+)\.o$};
+
+## 分析: objdump -x dest.o
+
+our $pid = open(our $headers, "LANG=en objdump -x ${dest_file}|");
+$pid > 0 or die "Failed to objdump -x ${dest_file}";
+
+our @raw_symbol_table = ();
+our @global_relocation_records = ();
+
+while (<$headers>) {
+    chomp;
+    if ( /^SYMBOL TABLE/ ) {
+        while (<$headers>) {
+            chomp;
+            if (/([0-9a-f]+)\s+(.+)\s+([0-9a-f]+)\s+(.+)/) {
+				my ($a, $b, $c, $d) = ($1, $2, $3, $4);
+				if ( $d =~ /^[_0-9a-zA-Z]+$/ ) {
+					push @raw_symbol_table, ( [$a, $b, $c, $d] )
+				}
+            } else {
+                last
+            }
+        }
+    } elsif ( /^RELOCATION RECORDS FOR \[\.text\]:/ ) {
+        while (<$headers>) {
+            chomp;
+            if ( /^OFFSET/ ) {
+            } elsif ( /^([0-9a-f]+)\s+.+\s+(.+)[+-]0x(\d+)/ ) {
+				if ( substr ($2, 0, 1) ne '.') {
+					push @global_relocation_records, ([$1, $2, $3])
+				}
+            } else {
+                last
+            }
+        }
+    }
+}
+close $headers; 
+undef $headers;
+waitpid $pid, 0;
+undef $pid;
+
+## 将符号分类：local，global，unresolved
+## 如果symbol-table里存在一个unresolved，
+## 但不存在于global_relocation_records，说明它不是个函数，而不必对其提供桩 
+
+## 除掉某些builtin函数
+## my @builtin_funcs = qw(puts printf memset memcpy memmove 
+## 	memcmp strlen sprintf sscanf scanf strcpy 
+## 	strcmp __stack_chk_fail __cua_except_del_defer __cua_except_add_defer
+##     logger_printf malloc free calloc realloc log exp
+## 	);
+## my %builtin_funcs_map = ();
+## for (@builtin_funcs) {
+## 	$builtin_funcs_map{ $_ } = 0
+## }
+## undef @builtin_funcs;
+
+##  静态函数
+our @local_symbols = ();
+
+## 全局函数
+our @global_symbols = ();
+
+our %unresolved_symbols_map = ();
+
+## 外部函数
+our @unresolved_symbols = ();
+
+for my $item ( @raw_symbol_table ) {
+	$_ = $item->[1];
+	if ( /^l\s+F\s+/ ) {
+		push @local_symbols, ( [ $item->[0], $item->[2], $item->[3] ] )
+	} elsif ( /^g\s+F\s+/ ) {
+		push @global_symbols, ( [ $item->[0], $item->[2], $item->[3] ] )
+	} elsif ( /^\*UND\*/ ) {
+		$unresolved_symbols_map{ $item->[3] } = $item->[3]
+	}
+}
+
+for my $item ( @global_relocation_records ) {
+	if ( defined ($unresolved_symbols_map{ $item->[1] }) ) {
+		push @unresolved_symbols, ($unresolved_symbols_map{ $item->[1] });
+		delete $unresolved_symbols_map{ $item->[1] };
+	}
+}
+undef @raw_symbol_table;
+undef %unresolved_symbols_map;
+
+## 为生成本地函数字典
+our %local_function_map = ();
+for my $it ( @local_symbols ) {
+	$local_function_map{ $it->[2] } = $it
+}
+
+## 反汇编 dest-file
+our $pid = open(our $disa, "LANG=en objdump -d ${dest_file}|");
+$pid > 0 or die "Failed to objdump -d ${dest_file}";
+
+our @local_relocation_records = ();
+## 7c:	e8 7f ff ff ff       	callq  0 <inside>
+while (<$disa>) {
+    chomp;
+	if ( /([0-9a-f]+):\s+e8\s.+\scallq\s.+<(\w+)>/ ) {
+		my $loc = $1;
+		my $name = $2;
+		if (defined $local_function_map{ $name }) {
+			push @local_relocation_records, ( [$loc, $name] )
+		}
+	}
+}
+close $disa;
+undef $disa;
+undef %local_function_map;
+
+
+our %relocation_array_map = ();
+for my $it ( @local_relocation_records ) {
+	if (! defined($relocation_array_map{ $it->[1] })) {
+		$relocation_array_map{ $it->[1] } = [ hex($it->[0]) + 1 ]
+	} else {
+		push @{$relocation_array_map{ $it->[1] }}, ( hex($it->[0]) + 1 )
+	}
+}
+
+for my $it ( @global_relocation_records ) {
+	if (! defined($relocation_array_map{ $it->[1] })) {
+		$relocation_array_map{ $it->[1] } = [ hex($it->[0]) ]
+	} else {
+		push @{$relocation_array_map{ $it->[1] }}, ( hex($it->[0]) )
+	}
+}
+
+
+## 生成lds
+sub ld_verbose() {
+	open my $lds, '>', $dest . "_cmock.lds";
+	open my $ldv, 'ld --verbose|';
+	my $i = 0;
+	while (<$ldv>) {
+		# chmop;
+		if ($i == 0) {
+			if (/=================================/) {
+				$i = 1
+			}
+		} else {
+			if (/=================================/) {
+				last
+			}
+			print $lds $_;
+			if ($i == 1) {
+				if (/^\s*\.text\s*:\s*$/) {
+					$i = 2
+				}
+			} else {
+				if (/^\s*\{\s*$/) {
+					print $lds 'CMOCK_TEXT_VMA = .;', "\n";
+					print $lds "${dest_file}(.text)", "\n";	
+				}
+				$i = 1;
+			}
+		}
+	}
+	close $lds;
+	close $ldv;
+}
+
+ld_verbose;
+
+
+
+my $page = `getconf PAGE_SIZE`;
+chomp $page;
+
+open my $destmockc, '>', $dest . "_cmock.c";
+print $destmockc <<"ENDSS";
+#include "${dest}_cmock.h"
+#include <unistd.h>
+#include <sys/mman.h>
+
+extern char CMOCK_TEXT_VMA;
+
+static
+void
+__cmock_mprotect(char *p, int add)
+{
+  int x = (add >= 0 ? (PROT_READ|PROT_WRITE|PROT_EXEC) : (PROT_READ|PROT_EXEC));
+  void *begin = (void *)((unsigned long long)p / $page * $page);
+  if (p + 4 > (char *)begin + $page)
+    mprotect(begin, $page * 2, x);
+  else 
+    mprotect(begin, $page, x);
+}
+
+void
+__cmock_relocate(char *f, const unsigned *reloc, unsigned *save)
+{
+  unsigned off;
+  while ((off = *reloc++))
+    {
+      char *p = &CMOCK_TEXT_VMA + off;
+      __cmock_mprotect(p, 0);
+      if (save)
+        *save++ = *(unsigned *)p;
+      *(unsigned *)p = (unsigned)(f - p - 4);
+      __cmock_mprotect(p, -1);
+    }
+}
+
+static
+void
+__cmock_restore(const unsigned *reloc, const unsigned *save)
+{
+  unsigned off;
+  while ((off = *reloc++))
+    {
+      char *p = &CMOCK_TEXT_VMA + off;
+      __cmock_mprotect(p, 0);
+      *(unsigned int *)p = *save ++ ;
+      __cmock_mprotect(p, -1);
+    }
+}
+
+struct cmock_stub_object *__cmock_stub_list = 0;
+
+void
+cmock_restore()
+{
+  while (__cmock_stub_list)
+    {
+      struct cmock_stub_object *obj = __cmock_stub_list;
+      __cmock_stub_list = obj->prev;
+      __cmock_restore(obj->reloc, obj->save);
+      obj->mocked = 0;
+    }
+}
+
+char const *__cmock_case_name;
+int  __cmock_case_result;
+int  __cmock_result = 0;
+
+int
+cmock_result()
+{
+  return __cmock_result;
+}
+
+ENDSS
+
+	
+sub write_stub_object ($) {
+	my ($fn) = @_;
+	print $destmockc "static const unsigned __cmock_relocation_${fn} [] = {\n";
+	if (exists ($relocation_array_map{ $fn })) {
+		my $arr = $relocation_array_map{ $fn };
+		for my $i ( @$arr ) {
+			print $destmockc "\t", "$i,\n";
+		}
+	}
+	print $destmockc "\t", "0\n";
+	print $destmockc "};\n";
+	print $destmockc "static unsigned __cmock_save_${fn} [] = {\n";
+	if (exists ($relocation_array_map{ $fn })) {
+		my $arr = $relocation_array_map{ $fn };
+		for my $i ( @$arr ) {
+			print $destmockc "\t", "0,\n";
+		}
+	}
+	print $destmockc "\t", "0\n";
+	print $destmockc "};\n";
+	print $destmockc "struct cmock_stub_object __cmock_stub_object_${fn} = \n", 
+		"\t{ .reloc = __cmock_relocation_${fn}, .save = __cmock_save_${fn}, .mocked = 0, .prev = 0 };\n";
+
+	print $destmockc "void __cmock_stub_func_${fn}() {\n";
+	print $destmockc "\t", "void *args = __builtin_apply_args();\n";
+	print $destmockc "\t", "void *retv = __builtin_apply(__cmock_stub_object_${fn}.mocked, args, 256);\n";
+	print $destmockc "\t", "__builtin_return (retv);\n";
+	print $destmockc "}\n";
+}
+
+for ((map { $_->[2] } (@local_symbols, @global_symbols)), @unresolved_symbols) {
+	write_stub_object $_
+}
+
+close $destmockc;
+
+
+### generating header file
+open my $destmockh, '>', $dest . "_cmock.h";
+print $destmockh <<"ENDSS";
+#ifndef __${dest}_cmock_h__
+#define __${dest}_cmock_h__
+
+struct cmock_stub_object
+{
+  struct cmock_stub_object *prev;
+  void            *mocked;
+  unsigned const  *reloc;
+  unsigned        *save;
+};
+
+extern char CMOCK_TEXT_VMA;
+extern struct cmock_stub_object *__cmock_stub_list;
+
+#define __CMOCK_COMBO_(a, b) a##b
+#define __CMOCK_COMBO(a, b) __CMOCK_COMBO_(a, b)
+#define __CMOCK_COMBO3_(a, b, c) a##b##c
+#define __CMOCK_COMBO3(a, b, c) __CMOCK_COMBO3_(a, b, c)
+#define __CMOCK_HAS__(a, b, c, ...)  c
+#define __CMOCK_HAS_(...) __CMOCK_HAS__(0, ##__VA_ARGS__, 1, 0)
+#define __CMOCK_HAS(...)  __CMOCK_HAS_(__VA_ARGS__)
+
+#define __CMOCK_DF_(zero, ...)  __VA_ARGS__
+#define __CMOCK_DF(...)  __CMOCK_DF_(__VA_ARGS__)
+
+#define __CMOCK_HASP_H(...)  0, 0
+#define __CMOCK_HASP(a, ...) __CMOCK_HAS(__CMOCK_DF(__CMOCK_HASP_H a))
+
+#define __CMOCK_REAL_FUNC_0(fn) ({ extern int fn (); (void *)&fn; })
+#define __CMOCK_REAL_FUNC_1(fn) ( (void *)(&CMOCK_TEXT_VMA + __CMOCK_COMBO(__CMOCK_LOCAL_, fn)) )
+#define __CMOCK_REAL_FUNC(fn)  __CMOCK_COMBO(__CMOCK_REAL_FUNC_, __CMOCK_HASP(__CMOCK_COMBO(__CMOCK_LOCAL_, fn))) (fn)
+
+#define __CMOCK_CALL_0(rt, fn, args)  (fn args)
+#define __CMOCK_CALL_1(rt, fn, args)  (((rt (*)()) __CMOCK_REAL_FUNC(fn)) args)
+#define CMOCK_CALL(rt, fn, args)  __CMOCK_COMBO(__CMOCK_CALL_, __CMOCK_HAS(rt))(rt, fn, args)
+
+#define __CMOCK_MOCK(fn, addr) do {\\
+  struct cmock_stub_object *obj = & __CMOCK_COMBO(__cmock_stub_object_, fn); \\
+  if (!obj->mocked) {                                  \\
+    obj->mocked = (addr); \\
+    __cmock_relocate((char *)__CMOCK_COMBO(__cmock_stub_func_, fn), obj->reloc, obj->save); \\
+    obj->prev = __cmock_stub_list; __cmock_stub_list = obj;  \\
+  } else {      \\
+    __cmock_relocate((char *)(addr), obj->reloc, 0); \\
+  }} while (0)
+
+
+#define CMOCK_FUNC_VAL(fn, val) \\
+    typeof(val) __CMOCK_COMBO3(__cmock_func_, fn, __LINE__)() { \\
+        return val; \\
+    }\\
+    __CMOCK_MOCK(fn, & __CMOCK_COMBO3(__cmock_func_, fn, __LINE__))
+
+
+#define CMOCK_FUNC(rt, fn) \\
+    auto rt __CMOCK_COMBO3(__cmock_func_, fn, __LINE__)(); \\
+    __CMOCK_MOCK(fn, & __CMOCK_COMBO3(__cmock_func_, fn, __LINE__)); \\
+    rt __CMOCK_COMBO3(__cmock_func_, fn, __LINE__)
+
+
+#define CMOCK_CASE(name) static void CASE__##name ()   
+
+#define CMOCK_RUN_CASE(name) \\
+    do { __cmock_case_name = #name; \\
+         __cmock_case_result = 1;  \\
+         CASE__##name(); \\
+         cmock_restore(); \\
+       if (__cmock_case_result) \\
+          printf("\\033[40;37mCASE\\033[0m \\033[32;32m[PASS]\\033[0m %s\\n", __cmock_case_name); \\
+       else {\\
+          printf("\\033[40;37mCASE\\033[0m \\033[32;31m[FAIL]\\033[0m \\033[4m%s\\033[0m\\n", __cmock_case_name); \\
+          __cmock_result = 1; \\
+       } \\
+    } while(0)       
+
+#define CMOCK_RESULT(expr) (__cmock_case_result = !!(expr))
+
+#define CMOCK_ERROR(fmt, ...) \\
+    do { printf( "\\t\\033[32;31m\\033[4m" fmt "\\033[0m\\n", ##__VA_ARGS__ ); \\
+         __cmock_case_result = 0; \\
+    } while (0)
+
+#define CMOCK_INFO(fmt, ...) \\
+    do { \\
+      const char *txt = getenv("V"); \\
+      if (txt && txt[0] != '0') \\
+        printf( "\\t\\033[32;34m" fmt "\\033[0m\\n", ##__VA_ARGS__ ); \\
+    } while (0)
+
+extern char const *__cmock_case_name;
+extern int  __cmock_case_result;
+extern int  __cmock_result;
+extern void cmock_restore();
+extern int  cmock_result();
+extern void __cmock_relocate(char *f, const unsigned *reloc, unsigned *save);
+
+ENDSS
+
+for my $it (@local_symbols) {
+	my $off = $it->[0];
+    my $fn = $it->[2];
+	print $destmockh "#define __CMOCK_LOCAL_${fn}  (0x${off})\n";
+}
+
+for ((map { $_->[2] } (@local_symbols, @global_symbols)), @unresolved_symbols) {
+	my $fn = $_;
+	print $destmockh "extern struct cmock_stub_object __cmock_stub_object_${fn};\n";
+	print $destmockh "extern void __cmock_stub_func_${fn}();\n";
+}
+
+print $destmockh <<"ENDSS";
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+ENDSS
+
+close $destmockh;
+
+exit 0
