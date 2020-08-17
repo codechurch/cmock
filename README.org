@@ -86,8 +86,7 @@
 #+end_src
 
 * 简单单元测试接口
-  - 环境变量 V
-    变量 V 控制附加信息输出，
+  - 环境变量 V 控制附加信息输出，
 #+begin_src sh :export code
   V=1 ./test_some.out
 #+end_src
