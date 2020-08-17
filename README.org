@@ -60,6 +60,13 @@
   (--unresolved-symbols 是可选的，取决于在test.c里的实现。)
 
 * 编程接口
+  - 环境变量 V
+    变量 V 控制附加信息输出，
+#+begin_src sh :export code
+  V=1 ./test_some.out
+#+end_src
+    将输出附加信息。
+
   - 函数 void cmock_restore()
 	将当前MOCK的函数恢复为真实函数。
 
