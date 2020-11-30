@@ -6,7 +6,7 @@ all: test_some.out
 	gcc -c -g -Wall -fPIC -o $(@) $< 
 
 some_cmock.c some_cmock.h: some.o
-	./cmock $<
+	cmock $<
 
 test.o: some_cmock.h
 some_cmock.o: some_cmock.c some_cmock.h

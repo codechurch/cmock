@@ -32,7 +32,8 @@ CMOCK_CASE(some)
 
   cmock_restore();
   CMOCK_CALL(int, i_have, ());
-  CMOCK_RESULT(1);
+  CMOCK_ERROR("aaa");
+  //CMOCK_RESULT(1);
 }
 
 int

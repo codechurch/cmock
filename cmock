@@ -417,6 +417,7 @@ cmock_restore()
 char const *__cmock_case_name;
 int  __cmock_case_result;
 int  __cmock_result = 0;
+jmpbuf   __cmock_JB;
 
 int
 cmock_result()
@@ -470,6 +471,8 @@ print $destmockh <<"ENDSS";
 #ifndef __${dest}_cmock_h__
 #define __${dest}_cmock_h__
 
+#include <setjmp.h>
+
 struct cmock_stub_object
 {
   struct cmock_stub_object *prev;
@@ -481,6 +484,8 @@ struct cmock_stub_object
 extern char CMOCK_TEXT_VMA;
 extern struct cmock_stub_object *__cmock_stub_list;
 
+#define __CMOCK_TEXT(x) #x
+#define CMOCK_TEXT(x) __CMOCK_TEXT(x) 
 #define __CMOCK_COMBO_(a, b) a##b
 #define __CMOCK_COMBO(a, b) __CMOCK_COMBO_(a, b)
 #define __CMOCK_COMBO3_(a, b, c) a##b##c
@@ -532,7 +537,8 @@ extern struct cmock_stub_object *__cmock_stub_list;
 #define CMOCK_RUN_CASE(name) \\
     do { __cmock_case_name = #name; \\
          __cmock_case_result = 1;  \\
-         CASE__##name(); \\
+         if (setjmp(__cmock_JB) == 0)    \\
+           CASE__##name(); \\
          cmock_restore(); \\
        if (__cmock_case_result) \\
           printf("\\033[40;37mCASE\\033[0m \\033[32;32m[PASS]\\033[0m %s\\n", __cmock_case_name); \\
@@ -540,7 +546,7 @@ extern struct cmock_stub_object *__cmock_stub_list;
           printf("\\033[40;37mCASE\\033[0m \\033[32;31m[FAIL]\\033[0m \\033[4m%s\\033[0m\\n", __cmock_case_name); \\
           __cmock_result = 1; \\
        } \\
-    } while(0)       
+    } while(0)
 
 #define CMOCK_RESULT(expr) (__cmock_case_result = !!(expr))
 
@@ -556,6 +562,15 @@ extern struct cmock_stub_object *__cmock_stub_list;
         printf( "\\t\\033[32;34m" fmt "\\033[0m\\n", ##__VA_ARGS__ ); \\
     } while (0)
 
+#define CMOCK_ASSERT(expr) \\
+    do { \\
+      if (!(expr)) {             \\
+        CMOCK_ERROR("%s", CMOCK_TEXT(expr)); \\
+        longjmp(__cmock_JB);     \\
+      } \\
+    } while (0)
+
+extern jmpbuf      __cmock_JB;
 extern char const *__cmock_case_name;
 extern int  __cmock_case_result;
 extern int  __cmock_result;
