@@ -570,7 +570,7 @@ extern struct cmock_stub_object *__cmock_stub_list;
       } \\
     } while (0)
 
-extern jmpbuf      __cmock_JB;
+extern jmp_buf     __cmock_JB;
 extern char const *__cmock_case_name;
 extern int  __cmock_case_result;
 extern int  __cmock_result;
