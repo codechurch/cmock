@@ -417,7 +417,7 @@ cmock_restore()
 char const *__cmock_case_name;
 int  __cmock_case_result;
 int  __cmock_result = 0;
-jmpbuf   __cmock_JB;
+jmp_buf  __cmock_JB;
 
 int
 cmock_result()
