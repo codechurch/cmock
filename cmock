@@ -565,7 +565,7 @@ extern struct cmock_stub_object *__cmock_stub_list;
 #define CMOCK_ASSERT(expr) \\
     do { \\
       if (!(expr)) {             \\
-        CMOCK_ERROR("%s", CMOCK_TEXT(expr)); \\
+        CMOCK_ERROR("ASSERT FAILURE AT LINE " CMOCK_TEXT(__LINE__) ": %s", CMOCK_TEXT(expr)); \\
         longjmp(__cmock_JB, 1);  \\
       } \\
     } while (0)
