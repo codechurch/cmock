@@ -88,6 +88,9 @@ Simple Unit Test Interface:
       To print text.
       The CMOCK_ERROR also sets error result.
 
+    - CMOCK_ASSERT(expr)
+      To assert by expr.
+
     - CMOCK_CASE(name)
       To provide a head of test-case function.
 

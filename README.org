@@ -103,6 +103,9 @@
     To print text.
     The CMOCK_ERROR also sets error result.
 
+  - macro CMOCK_ASSERT(expr)
+	To assert by expr.
+
   - macro CMOCK_CASE(name)
 	To provide a head of test-case function.
 
@@ -131,4 +134,3 @@ int main()
   return cmock_result();
 }
 #+end_src
-
