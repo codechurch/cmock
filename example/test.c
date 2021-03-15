@@ -32,14 +32,20 @@ CMOCK_CASE(some)
 
   cmock_restore();
   CMOCK_CALL(int, i_have, ());
-  CMOCK_ERROR("aaa");
+  //CMOCK_ERROR("aaa");
   //CMOCK_RESULT(1);
+}
+
+CMOCK_CASE(other)
+{
+  CMOCK_ASSERT(1 - 1);
 }
 
 int
 main()
 {
   CMOCK_RUN_CASE(some);
+  CMOCK_RUN_CASE(other);
   return cmock_result();
 }
 

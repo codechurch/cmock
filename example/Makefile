@@ -5,7 +5,7 @@ all: test_some.out
 %.o: %.c
 	gcc -c -g -Wall -fPIC -o $(@) $< 
 
-some_cmock.c some_cmock.h: some.o
+%_cmock.c %_cmock.h: %.o
 	cmock $<
 
 test.o: some_cmock.h
@@ -22,4 +22,3 @@ clean:
 
 
 .PHONY: all clean
-
