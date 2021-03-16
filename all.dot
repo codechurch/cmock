@@ -1,0 +1,44 @@
+digraph G {
+    rankdir=LR;
+    
+    {
+       node [shape=box];
+       all [label="CMOCK"];
+       install [label="Install:\nsudo cp cmock /usr/bin && sudo chmod +x /usr/bin/cmock"];
+       usage [label="Usage:\ncmock <base>.o"];
+       mock [label="Mock Interface"];
+       utest [label="Unit Test Interface"];
+    }
+    
+    {
+       node [shape=box];
+       cmock_restore;
+       CMOCK_CALL;
+       CMOCK_FUNC_VAL;
+       CMOCK_FUNC;
+
+       cmock_result;
+       CMOCK_RESULT;
+       CMOCK_INFO;
+       CMOCK_ERROR;
+       CMOCK_ASSERT;
+       CMOCK_CASE;
+       CMOCK_RUN_CASE;
+    }
+
+    all  -> { install; usage; mock; utest; }
+    mock -> {
+       cmock_restore;
+       CMOCK_CALL;
+       CMOCK_FUNC_VAL;
+       CMOCK_FUNC; }
+    utest -> {
+       cmock_result;
+       CMOCK_RESULT;
+       CMOCK_INFO;
+       CMOCK_ERROR;
+       CMOCK_ASSERT;
+       CMOCK_CASE;
+       CMOCK_RUN_CASE;
+    }
+}
